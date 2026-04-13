@@ -1,0 +1,125 @@
+
+body {
+  margin: 0;
+  background-color: #0f172a;
+  font-family: Arial, sans-serif;
+}
+
+/* App Container */
+.App {
+  text-align: center;
+  padding: 40px;
+  color: white;
+}
+
+/* Heading */
+h1 {
+  font-size: 34px;
+  color: #93c5fd;
+  margin-bottom: 30px;
+}
+
+/* Subheading */
+h2 {
+  margin-top: 10px;
+  margin-bottom: 25px;
+  color: #94a3b8;
+}
+
+/* Buttons */
+button {
+  margin: 10px;
+  padding: 10px 22px;
+  font-size: 15px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+/* Start Button */
+button:first-of-type {
+  background-color: #22c55e;
+  color: white;
+}
+
+/* Stop Button */
+button:last-of-type {
+  background-color: #ef4444;
+  color: white;
+}
+
+/* Stats Grid */
+.stats {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Card Base */
+.card {
+  background-color: #1e293b;
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* Card Title */
+.card h3 {
+  font-size: 15px;
+  color: #cbd5f5;
+  margin-bottom: 6px;
+}
+
+/* Numbers */
+.card p {
+  font-size: 26px;
+  font-weight: bold;
+  margin: 5px 0;
+}
+
+/* Percent */
+.card span {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* Metric Colors */
+.card:nth-child(1) {
+  border-top: 4px solid #3b82f6;
+}
+
+.card:nth-child(2) {
+  border-top: 4px solid #8b5cf6;
+}
+
+.card:nth-child(3) {
+  border-top: 4px solid #22c55e;
+}
+
+.card:nth-child(4) {
+  border-top: 4px solid #ef4444;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Reset Button */
+.reset-btn {
+  background-color: #f59e0b;
+  color: white;
+}
+

@@ -1,0 +1,305 @@
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #080808;
+  color: #e0e0e0;
+  font-family: 'DM Mono', 'Courier New', monospace;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ───────────────────────────────────────────────────── */
+.db-root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────── */
+.db-sidebar {
+  width: 200px;
+  min-width: 200px;
+  background: #0c0c0c;
+  border-right: 1px solid #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 0;
+}
+
+.db-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px 32px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.db-logo-dot {
+  width: 8px;
+  height: 8px;
+  background: #c8ff00;
+  border-radius: 50%;
+}
+
+.db-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  padding: 0 12px;
+}
+
+.db-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  /* FIX: nav items raised from #555 → #888 so they're readable */
+  color: #888;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  transition: all 0.15s;
+  letter-spacing: 0.3px;
+}
+
+.db-nav-item:hover {
+  color: #ccc;
+  background: #141414;
+}
+
+.db-nav-item.active {
+  color: #fff;
+  background: #181818;
+  border-left: 2px solid #c8ff00;
+  padding-left: 10px;
+}
+
+.db-nav-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.db-sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px;
+  font-size: 11px;
+  /* FIX: footer text raised from #444 → #777 */
+  color: #777;
+}
+
+.db-pulse {
+  width: 6px;
+  height: 6px;
+  background: #c8ff00;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── Main ─────────────────────────────────────────────────────── */
+.db-main {
+  flex: 1;
+  overflow-y: auto;
+  background: #080808;
+}
+
+.db-main::-webkit-scrollbar { width: 4px; }
+.db-main::-webkit-scrollbar-track { background: #0c0c0c; }
+.db-main::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+
+/* ── Header ───────────────────────────────────────────────────── */
+.db-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 32px 24px;
+  border-bottom: 1px solid #111;
+  position: sticky;
+  top: 0;
+  background: #080808;
+  z-index: 10;
+}
+
+.db-page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.3px;
+}
+
+.db-page-sub {
+  font-size: 12px;
+  /* FIX: subtitle raised from #444 → #888 */
+  color: #888;
+  margin-top: 3px;
+}
+
+.db-total-badge {
+  background: #111;
+  border: 1px solid #222;
+  /* FIX: badge text raised from #666 → #999 */
+  color: #999;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* ── Content ──────────────────────────────────────────────────── */
+.db-content {
+  padding: 28px 32px;
+}
+
+.db-loading {
+  padding: 60px 32px;
+  /* FIX: loading text raised from #444 → #888 */
+  color: #888;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+/* ── KPI Row ──────────────────────────────────────────────────── */
+.db-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1px;
+  background: #111;
+  border: 1px solid #111;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.db-kpi {
+  background: #0c0c0c;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.db-kpi-label {
+  font-size: 10px;
+  /* FIX: KPI labels raised from #444 → #aaa */
+  color: #aaa;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.db-kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.db-kpi-sub {
+  font-size: 11px;
+  /* FIX: KPI sub text raised from #333 → #777 */
+  color: #777;
+}
+
+/* ── Panels ───────────────────────────────────────────────────── */
+.db-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.db-panel {
+  background: #0c0c0c;
+  border: 1px solid #161616;
+  border-radius: 8px;
+  padding: 20px 22px;
+}
+
+.db-panel.full {
+  grid-column: 1 / -1;
+}
+
+.db-panel-title {
+  font-size: 10px;
+  /* FIX: panel titles raised from #444 → #bbb */
+  color: #bbb;
+  letter-spacing: 1.5px;
+  margin-bottom: 18px;
+  text-transform: uppercase;
+}
+
+/* ── Breakdown ────────────────────────────────────────────────── */
+.db-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.db-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.db-breakdown-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.db-breakdown-name {
+  width: 90px;
+  font-size: 12px;
+  /* FIX: breakdown names raised from #666 → #bbb */
+  color: #bbb;
+  flex-shrink: 0;
+}
+
+.db-breakdown-bar-wrap {
+  flex: 1;
+  height: 3px;
+  background: #1a1a1a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.db-breakdown-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.db-breakdown-pct {
+  font-size: 11px;
+  /* FIX: breakdown percentages raised from #444 → #bbb */
+  color: #bbb;
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .db-sidebar { display: none; }
+  .db-panels  { grid-template-columns: 1fr; }
+  .db-panel.full { grid-column: 1; }
+}

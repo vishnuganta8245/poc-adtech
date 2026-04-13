@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Ad Event Analytics Backend
+
+Resources:
+
+  # API Gateway with CORS enabled
+  ServerlessRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  # Lambda Function
+  EventFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Tracing: Active
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref AdEventsTable
+          BUCKET_NAME: !Ref EventStorageBucket
+          TOPIC_ARN: !Ref FraudAlertTopic
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AdEventsTable
+        - S3CrudPolicy:
+            BucketName: !Ref EventStorageBucket
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt FraudAlertTopic.TopicName
+      Events:
+        # POST handler
+        EventAPI:
+          Type: Api
+          Properties:
+            Path: /events
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+        # OPTIONS handler — required for CORS preflight
+        EventAPIOptions:
+          Type: Api
+          Properties:
+            Path: /events
+            Method: options
+            RestApiId: !Ref ServerlessRestApi
+
+  # DynamoDB Table
+  AdEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+
+  # S3 Bucket
+  EventStorageBucket:
+    Type: AWS::S3::Bucket
+
+  # SNS Topic
+  FraudAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: fraud-alert-topic
+
+  # SNS Email Subscription
+  FraudEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref FraudAlertTopic
+      Protocol: email
+      Endpoint: vganta@evoketechnologies.com
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/events"
+
+  TableName:
+    Description: "DynamoDB Table Name"
+    Value: !Ref AdEventsTable
+
+  BucketName:
+    Description: "S3 Bucket Name"
+    Value: !Ref EventStorageBucket
