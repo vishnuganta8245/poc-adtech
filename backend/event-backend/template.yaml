@@ -1,96 +1,191 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Ad Event Analytics Backend
+Description: Event Pipeline (FINAL - 2 TABLE ARCHITECTURE)
+
+# 🌐 GLOBAL CORS
+Globals:
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,OPTIONS'"
+      AllowHeaders: "'Content-Type'"
+      AllowOrigin: "'*'"
 
 Resources:
 
-  # API Gateway with CORS enabled
-  ServerlessRestApi:
-    Type: AWS::Serverless::Api
+# ─────────────────────────────────────────────
+# 🌊 Kinesis Stream
+# ─────────────────────────────────────────────
+  EventStream:
+    Type: AWS::Kinesis::Stream
     Properties:
-      StageName: Prod
-      Cors:
-        AllowMethods: "'POST,OPTIONS'"
-        AllowHeaders: "'Content-Type'"
-        AllowOrigin: "'*'"
+      Name: event-stream
+      StreamModeDetails:
+        StreamMode: ON_DEMAND
 
-  # Lambda Function
+# ─────────────────────────────────────────────
+# 🚀 Producer Lambda (API → Kinesis)
+# ─────────────────────────────────────────────
+  ProducerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: producer.handler
+      Runtime: nodejs18.x
+      MemorySize: 512
+      Timeout: 10
+
+      Environment:
+        Variables:
+          STREAM_NAME: !Ref EventStream
+
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kinesis:PutRecords
+              Resource: !GetAtt EventStream.Arn
+
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /events
+            Method: POST
+
+# ─────────────────────────────────────────────
+# ⚙️ Consumer Lambda (Kinesis → DynamoDB + S3)
+# ─────────────────────────────────────────────
   EventFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Handler: app.lambdaHandler
       Runtime: nodejs18.x
-      Tracing: Active
-      Timeout: 10
-      MemorySize: 256
+      MemorySize: 512
+      Timeout: 30
+
       Environment:
         Variables:
-          TABLE_NAME: !Ref AdEventsTable
+          TABLE_NAME: !Ref MetricsTable
+          DIM_TABLE: !Ref DimensionsTable
           BUCKET_NAME: !Ref EventStorageBucket
-          TOPIC_ARN: !Ref FraudAlertTopic
+
       Policies:
+        # Metrics Table
         - DynamoDBCrudPolicy:
-            TableName: !Ref AdEventsTable
+            TableName: !Ref MetricsTable
+
+        # Dimensions Table
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DimensionsTable
+
+        # S3 Access
         - S3CrudPolicy:
             BucketName: !Ref EventStorageBucket
-        - SNSPublishMessagePolicy:
-            TopicName: !GetAtt FraudAlertTopic.TopicName
-      Events:
-        # POST handler
-        EventAPI:
-          Type: Api
-          Properties:
-            Path: /events
-            Method: post
-            RestApiId: !Ref ServerlessRestApi
-        # OPTIONS handler — required for CORS preflight
-        EventAPIOptions:
-          Type: Api
-          Properties:
-            Path: /events
-            Method: options
-            RestApiId: !Ref ServerlessRestApi
 
-  # DynamoDB Table
-  AdEventsTable:
+        # Kinesis Read
+        - Statement:
+            - Effect: Allow
+              Action:
+                - kinesis:GetRecords
+                - kinesis:GetShardIterator
+                - kinesis:DescribeStream
+              Resource: !GetAtt EventStream.Arn
+
+      Events:
+        KinesisStream:
+          Type: Kinesis
+          Properties:
+            Stream: !GetAtt EventStream.Arn
+            StartingPosition: LATEST
+            BatchSize: 100
+            MaximumBatchingWindowInSeconds: 1
+            BisectBatchOnFunctionError: true
+
+# ─────────────────────────────────────────────
+# 📊 Metrics Lambda (Dashboard API)
+# ─────────────────────────────────────────────
+  MetricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: metrics.lambdaHandler
+      Runtime: nodejs18.x
+      MemorySize: 512
+      Timeout: 10
+
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetricsTable
+          DIM_TABLE: !Ref DimensionsTable
+
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MetricsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref DimensionsTable
+
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /metrics
+            Method: GET
+
+# ─────────────────────────────────────────────
+# 🗄️ Metrics Table (AGGREGATED COUNTS)
+# ─────────────────────────────────────────────
+  MetricsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: event-metrics-table
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: event_id
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
           AttributeType: S
       KeySchema:
-        - AttributeName: event_id
+        - AttributeName: pk
           KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
 
-  # S3 Bucket
+# ─────────────────────────────────────────────
+# 🗄️ Dimensions Table (GEO / USER / DEVICE)
+# ─────────────────────────────────────────────
+  DimensionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: event-dimensions-table
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+# ─────────────────────────────────────────────
+# 📦 S3 Bucket (RAW EVENTS BACKUP) ✅ FIX ADDED
+# ─────────────────────────────────────────────
   EventStorageBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
 
-  # SNS Topic
-  FraudAlertTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: fraud-alert-topic
-
-  # SNS Email Subscription
-  FraudEmailSubscription:
-    Type: AWS::SNS::Subscription
-    Properties:
-      TopicArn: !Ref FraudAlertTopic
-      Protocol: email
-      Endpoint: vganta@evoketechnologies.com
-
+# ─────────────────────────────────────────────
+# 🌐 OUTPUTS
+# ─────────────────────────────────────────────
 Outputs:
-  ApiEndpoint:
-    Description: "API Gateway endpoint URL"
+  EventsApi:
+    Description: "POST events"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/events"
 
-  TableName:
-    Description: "DynamoDB Table Name"
-    Value: !Ref AdEventsTable
-
-  BucketName:
-    Description: "S3 Bucket Name"
-    Value: !Ref EventStorageBucket
+  MetricsApi:
+    Description: "GET dashboard metrics"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/metrics"

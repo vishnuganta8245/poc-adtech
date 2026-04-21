@@ -1,606 +1,518 @@
 import { useState, useEffect, useRef } from "react";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
-import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
-} from "recharts";
 import "./App.css";
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale, BarElement,
+  LineElement, PointElement, ArcElement,
+  Filler, Tooltip, Legend,
+} from "chart.js";
+import { Bar, Line, Doughnut } from "react-chartjs-2";
 
-const client = new DynamoDBClient({
-  region: import.meta.env.VITE_AWS_REGION,
-  credentials: {
-    accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
-    secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
+ChartJS.register(
+  CategoryScale, LinearScale, BarElement,
+  LineElement, PointElement, ArcElement,
+  Filler, Tooltip, Legend
+);
+
+const METRICS_URL = import.meta.env.VITE_METRICS_URL;
+
+const PALETTE = [
+  "#c8ff00", "#00d4ff", "#ff6b6b", "#ffd166",
+  "#06ffa5", "#a78bfa", "#fb923c", "#38bdf8",
+];
+
+const CHART_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 300 },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: "#1e2130",
+      borderColor: "#2a2d3a",
+      borderWidth: 1,
+      titleColor: "#e8eaf0",
+      bodyColor: "#8b8fa8",
+      padding: 10,
+      cornerRadius: 6,
+    },
   },
-});
+  scales: {
+    x: {
+      grid: { color: "#2a2d3a", lineWidth: 0.5 },
+      ticks: { color: "#6b6f84", font: { size: 11 } },
+      border: { color: "#2a2d3a" },
+    },
+    y: {
+      grid: { color: "#2a2d3a", lineWidth: 0.5 },
+      ticks: { color: "#6b6f84", font: { size: 11 } },
+      border: { color: "#2a2d3a" },
+    },
+  },
+};
 
-const docClient = DynamoDBDocumentClient.from(client);
-const TABLE_NAME = import.meta.env.VITE_DYNAMODB_TABLE;
+const PIE_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 300 },
+  plugins: {
+    legend: {
+      display: true,
+      position: "bottom",
+      labels: { color: "#8b8fa8", boxWidth: 10, padding: 12, font: { size: 11 } },
+    },
+    tooltip: {
+      backgroundColor: "#1e2130",
+      borderColor: "#2a2d3a",
+      borderWidth: 1,
+      titleColor: "#e8eaf0",
+      bodyColor: "#8b8fa8",
+      padding: 10,
+    },
+  },
+};
 
-async function fetchAllEvents() {
-  let items = [];
-  let lastKey = undefined;
-  do {
-    const res = await docClient.send(new ScanCommand({
-      TableName: TABLE_NAME,
-      ExclusiveStartKey: lastKey,
-    }));
-    items = items.concat(res.Items || []);
-    lastKey = res.LastEvaluatedKey;
-  } while (lastKey);
-  return items;
-}
+// ── Mock data for preview ──────────────────────────────────────────────
+const MOCK = {
+  totalEvents: 148320,
+  totalImpressions: 120000,
+  totalClicks: 18500,
+  totalConversions: 4312,
+  totalRevenue: 2847650,
+  ctr: "15.42",
+  conversionRate: "8.21",
+  timeSeriesEvents: [
+    { t: "10:00", count: 1200 }, { t: "10:30", count: 1850 },
+    { t: "11:00", count: 2200 }, { t: "11:30", count: 1980 },
+    { t: "12:00", count: 2700 }, { t: "12:30", count: 3100 },
+    { t: "13:00", count: 2850 }, { t: "13:30", count: 3400 },
+    { t: "14:00", count: 3750 }, { t: "14:30", count: 4100 },
+  ],
+  byGender: [{ name: "Male", value: 52 }, { name: "Female", value: 41 }, { name: "Other", value: 7 }],
+  byAge: [{ name: "18–24", value: 28 }, { name: "25–34", value: 38 }, { name: "35–44", value: 22 }, { name: "45+", value: 12 }],
+  bySegment: [{ name: "Premium", value: 35 }, { name: "Regular", value: 45 }, { name: "New", value: 20 }],
+  byCity: [{ name: "Mumbai", value: 9200 }, { name: "Delhi", value: 8100 }, { name: "Bangalore", value: 7400 }, { name: "Hyderabad", value: 5600 }, { name: "Chennai", value: 4200 }],
+  byChannel: [{ name: "Organic", value: 38 }, { name: "Paid", value: 31 }, { name: "Social", value: 18 }, { name: "Email", value: 13 }],
+  byDevice: [{ name: "Mobile", value: 62 }, { name: "Desktop", value: 29 }, { name: "Tablet", value: 9 }],
+  campaignIds: ["Camp 1", "Camp 2", "Camp 3"],
+  campaigns: [
+    {
+      id: "Camp 1", name: "Camp 1",
+      totalEvents: 54200, impressions: 44000, clicks: 7200, conversions: 1800, revenue: 1100000,
+      ctr: 16.36, conversionRate: 9.0,
+      timeSeriesEvents: [{ t: "10:00", count: 420 }, { t: "10:30", count: 680 }, { t: "11:00", count: 800 }, { t: "11:30", count: 740 }, { t: "12:00", count: 950 }, { t: "12:30", count: 1100 }, { t: "13:00", count: 1020 }, { t: "13:30", count: 1240 }, { t: "14:00", count: 1380 }, { t: "14:30", count: 1500 }],
+      dims: {
+        byGender: [{ name: "Male", value: 58 }, { name: "Female", value: 36 }, { name: "Other", value: 6 }],
+        byAge: [{ name: "18–24", value: 32 }, { name: "25–34", value: 40 }, { name: "35–44", value: 18 }, { name: "45+", value: 10 }],
+        bySegment: [{ name: "Premium", value: 42 }, { name: "Regular", value: 40 }, { name: "New", value: 18 }],
+        byCity: [{ name: "Mumbai", value: 3800 }, { name: "Delhi", value: 3100 }, { name: "Bangalore", value: 2900 }],
+        byChannel: [{ name: "Organic", value: 40 }, { name: "Paid", value: 35 }, { name: "Social", value: 15 }, { name: "Email", value: 10 }],
+        byDevice: [{ name: "Mobile", value: 65 }, { name: "Desktop", value: 28 }, { name: "Tablet", value: 7 }],
+      },
+    },
+    {
+      id: "Camp 2", name: "Camp 2",
+      totalEvents: 51800, impressions: 42000, clicks: 6500, conversions: 1420, revenue: 980000,
+      ctr: 15.48, conversionRate: 7.8,
+      timeSeriesEvents: [{ t: "10:00", count: 390 }, { t: "10:30", count: 620 }, { t: "11:00", count: 760 }, { t: "11:30", count: 700 }, { t: "12:00", count: 890 }, { t: "12:30", count: 1010 }, { t: "13:00", count: 940 }, { t: "13:30", count: 1140 }, { t: "14:00", count: 1260 }, { t: "14:30", count: 1380 }],
+      dims: {
+        byGender: [{ name: "Male", value: 48 }, { name: "Female", value: 45 }, { name: "Other", value: 7 }],
+        byAge: [{ name: "18–24", value: 25 }, { name: "25–34", value: 38 }, { name: "35–44", value: 24 }, { name: "45+", value: 13 }],
+        bySegment: [{ name: "Premium", value: 30 }, { name: "Regular", value: 50 }, { name: "New", value: 20 }],
+        byCity: [{ name: "Delhi", value: 3200 }, { name: "Hyderabad", value: 2600 }, { name: "Chennai", value: 2100 }],
+        byChannel: [{ name: "Organic", value: 35 }, { name: "Paid", value: 30 }, { name: "Social", value: 22 }, { name: "Email", value: 13 }],
+        byDevice: [{ name: "Mobile", value: 60 }, { name: "Desktop", value: 32 }, { name: "Tablet", value: 8 }],
+      },
+    },
+    {
+      id: "Camp 3", name: "Camp 3",
+      totalEvents: 42320, impressions: 34000, clicks: 4800, conversions: 1092, revenue: 767650,
+      ctr: 14.12, conversionRate: 7.6,
+      timeSeriesEvents: [{ t: "10:00", count: 390 }, { t: "10:30", count: 550 }, { t: "11:00", count: 640 }, { t: "11:30", count: 540 }, { t: "12:00", count: 860 }, { t: "12:30", count: 990 }, { t: "13:00", count: 890 }, { t: "13:30", count: 1020 }, { t: "14:00", count: 1110 }, { t: "14:30", count: 1220 }],
+      dims: {
+        byGender: [{ name: "Male", value: 50 }, { name: "Female", value: 43 }, { name: "Other", value: 7 }],
+        byAge: [{ name: "18–24", value: 27 }, { name: "25–34", value: 36 }, { name: "35–44", value: 24 }, { name: "45+", value: 13 }],
+        bySegment: [{ name: "Premium", value: 33 }, { name: "Regular", value: 44 }, { name: "New", value: 23 }],
+        byCity: [{ name: "Bangalore", value: 2800 }, { name: "Mumbai", value: 2400 }, { name: "Chennai", value: 1900 }],
+        byChannel: [{ name: "Organic", value: 38 }, { name: "Paid", value: 28 }, { name: "Social", value: 20 }, { name: "Email", value: 14 }],
+        byDevice: [{ name: "Mobile", value: 61 }, { name: "Desktop", value: 28 }, { name: "Tablet", value: 11 }],
+      },
+    },
+  ],
+};
 
-const TABS = ["Overview", "Campaigns", "Audience", "Geography", "Fraud"];
+const TABS = [
+  { id: "overview",   label: "Overview",   icon: "◈" },
+  { id: "campaigns",  label: "Campaigns",  icon: "◎" },
+  { id: "audience",   label: "Audience",   icon: "◉" },
+  { id: "geography",  label: "Geography",  icon: "◫" },
+];
 
-// FIX 1: Brighter palette so legend text is readable
-const PALETTE = ["#c8ff00", "#ffffff", "#aaaaaa", "#888888", "#555555"];
+function labels(arr = []) { return arr.map((d) => d.name); }
+function vals(arr = [])   { return arr.map((d) => d.value); }
 
+// ── Root ──────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [events, setEvents] = useState([]);
-  const [activeTab, setActiveTab] = useState("Overview");
-  const [countdown, setCountdown] = useState(5);
-  const [loading, setLoading] = useState(true);
-  const countdownRef = useRef(null);
-
-  const loadData = async () => {
-    try {
-      const data = await fetchAllEvents();
-      setEvents(data);
-      setCountdown(5);
-      setLoading(false);
-    } catch (err) {
-      console.error("Fetch error:", err);
-      setLoading(false);
-    }
-  };
+  const [metrics, setMetrics] = useState(MOCK);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [selectedCamp, setSelectedCamp] = useState(null); // null = "All"
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
-    loadData();
-    const iv = setInterval(loadData, 5000);
+    if (!METRICS_URL) return;
+    const load = async () => {
+      try {
+        const res = await fetch(METRICS_URL);
+        const data = await res.json();
+        setMetrics(data);
+        setLastUpdated(new Date());
+        setLive(true);
+        // Auto-select first campaign if none selected
+        if (!selectedCamp && data.campaignIds?.length) {
+          setSelectedCamp(null);
+        }
+      } catch {
+        setLive(false);
+      }
+    };
+    load();
+    const iv = setInterval(load, 5000);
     return () => clearInterval(iv);
   }, []);
 
-  useEffect(() => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    countdownRef.current = setInterval(() => {
-      setCountdown((p) => (p <= 1 ? 5 : p - 1));
-    }, 1000);
-    return () => clearInterval(countdownRef.current);
-  }, [events]);
+  // Resolve which campaign data to show for audience/geo tabs
+  const activeCamp = selectedCamp
+    ? metrics.campaigns?.find((c) => c.id === selectedCamp)
+    : null;
+
+  // Dims: use per-campaign dims if a campaign is selected, else overall
+  const dims = activeCamp?.dims || {
+    byGender: metrics.byGender,
+    byAge: metrics.byAge,
+    bySegment: metrics.bySegment,
+    byCity: metrics.byCity,
+    byDevice: metrics.byDevice,
+    byChannel: metrics.byChannel,
+  };
 
   return (
-    <div className="db-root">
-      <aside className="db-sidebar">
-        <div className="db-logo">
-          <span className="db-logo-dot" />
-          <span>AdPulse</span>
+    <div className="dash">
+      <aside className="sidebar">
+        <div className="logo">
+          <span className="logo-mark">■</span>
+          <span className="logo-text">EventLens</span>
         </div>
-        <nav className="db-nav">
-          {TABS.map((tab) => (
+        <nav className="nav">
+          {TABS.map((t) => (
             <button
-              key={tab}
-              className={`db-nav-item ${activeTab === tab ? "active" : ""}`}
-              onClick={() => setActiveTab(tab)}
+              key={t.id}
+              className={`nav-btn${activeTab === t.id ? " active" : ""}`}
+              onClick={() => setActiveTab(t.id)}
             >
-              <span className="db-nav-icon">{TAB_ICONS[tab]}</span>
-              {tab}
+              <span className="nav-icon">{t.icon}</span>
+              {t.label}
             </button>
           ))}
         </nav>
-        <div className="db-sidebar-footer">
-          <div className="db-pulse" />
-          <span>Live · refresh in {countdown}s</span>
+        <div className="sidebar-footer">
+          <div className={`status-dot${live ? " live" : ""}`} />
+          <span className="status-label">{live ? "Live" : "Preview"}</span>
         </div>
       </aside>
 
-      <main className="db-main">
-        <header className="db-header">
-          <div>
-            <h1 className="db-page-title">{activeTab}</h1>
-            {/* FIX 2: subtitle color bumped to visible #999 */}
-            <p className="db-page-sub" style={{ color: "#999" }}>Real-time ad event analytics</p>
-          </div>
-          <div className="db-header-right">
-            <span className="db-total-badge">{events.length.toLocaleString()} events</span>
-          </div>
-        </header>
-
-        {loading ? (
-          <div className="db-loading">Loading data from DynamoDB...</div>
-        ) : (
-          <div className="db-content">
-            {activeTab === "Overview"  && <Overview events={events} />}
-            {activeTab === "Campaigns" && <Campaigns events={events} />}
-            {activeTab === "Audience"  && <Audience events={events} />}
-            {activeTab === "Geography" && <Geography events={events} />}
-            {activeTab === "Fraud"     && <Fraud events={events} />}
+      <main className="main">
+        {/* Global campaign selector — shown on Campaigns, Audience, Geography */}
+        {activeTab !== "overview" && (
+          <div className="camp-selector">
+            <span className="camp-selector-label">Campaign</span>
+            <div className="camp-pills">
+              <button
+                className={`pill${!selectedCamp ? " active" : ""}`}
+                onClick={() => setSelectedCamp(null)}
+              >
+                All
+              </button>
+              {(metrics.campaignIds || []).map((id) => (
+                <button
+                  key={id}
+                  className={`pill${selectedCamp === id ? " active" : ""}`}
+                  onClick={() => setSelectedCamp(id)}
+                >
+                  {id}
+                </button>
+              ))}
+            </div>
           </div>
         )}
+
+        <div className="page-header">
+          <h1 className="page-title">
+            {TABS.find((t) => t.id === activeTab)?.label}
+            {selectedCamp && activeTab !== "overview" && (
+              <span className="page-title-camp"> — {selectedCamp}</span>
+            )}
+          </h1>
+          {lastUpdated && (
+            <p className="page-sub">Updated {lastUpdated.toLocaleTimeString()}</p>
+          )}
+        </div>
+
+        {activeTab === "overview"  && <Overview metrics={metrics} />}
+        {activeTab === "campaigns" && <Campaigns metrics={metrics} selectedCamp={selectedCamp} />}
+        {activeTab === "audience"  && <Audience dims={dims} />}
+        {activeTab === "geography" && <Geography dims={dims} />}
       </main>
     </div>
   );
 }
 
-const TAB_ICONS = {
-  Overview:  "▦",
-  Campaigns: "◈",
-  Audience:  "◉",
-  Geography: "◎",
-  Fraud:     "◬",
-};
+// ── Overview ──────────────────────────────────────────────────────────
+function Overview({ metrics }) {
+  const ts = metrics.timeSeriesEvents || [];
+  const lineData = {
+    labels: ts.map((d) => d.t),
+    datasets: [{
+      data: ts.map((d) => d.count),
+      borderColor: "#c8ff00",
+      backgroundColor: "rgba(200,255,0,0.07)",
+      fill: true, tension: 0.4,
+      pointRadius: 3, pointBackgroundColor: "#c8ff00",
+      borderWidth: 1.5,
+    }],
+  };
 
-// ─── Shared tooltip / axis config ─────────────────────────────────────────────
-
-const TIP = {
-  contentStyle: { background: "#111", border: "1px solid #2a2a2a", color: "#fff", fontSize: 12 },
-  cursor: { fill: "rgba(255,255,255,0.03)" },
-};
-
-// FIX 3: All axis tick colours raised from #555 → #bbb so numbers are clearly readable
-const TICK = { fill: "#bbb", fontSize: 11 };
-const AXIS_LINE = { stroke: "#333" };
-
-// ─── Shared Components ────────────────────────────────────────────────────────
-
-function KPI({ label, value, sub, accent }) {
   return (
-    <div className="db-kpi">
-      {/* FIX 4: label colour raised to #aaa */}
-      <span className="db-kpi-label" style={{ color: "#aaa" }}>{label}</span>
-      <span className="db-kpi-value" style={{ color: accent || "#fff" }}>{value}</span>
-      {sub && <span className="db-kpi-sub">{sub}</span>}
+    <>
+      <div className="kpi-grid">
+        <KpiCard label="Total events"   value={(metrics.totalEvents       || 0).toLocaleString()} accent />
+        <KpiCard label="Revenue"        value={`₹${(metrics.totalRevenue  || 0).toLocaleString()}`} />
+        <KpiCard label="Conversions"    value={(metrics.totalConversions   || 0).toLocaleString()} />
+        <KpiCard label="Impressions"    value={(metrics.totalImpressions   || 0).toLocaleString()} />
+        <KpiCard label="Clicks"         value={(metrics.totalClicks        || 0).toLocaleString()} />
+      </div>
+
+      <ChartCard title="Event volume over time" badge="streaming">
+        <div style={{ height: 220 }}>
+          <Line data={lineData} options={{
+            ...CHART_OPTS,
+            scales: {
+              ...CHART_OPTS.scales,
+              x: { ...CHART_OPTS.scales.x, ticks: { ...CHART_OPTS.scales.x.ticks, maxTicksLimit: 8 } },
+            },
+          }} />
+        </div>
+      </ChartCard>
+    </>
+  );
+}
+
+// ── Campaigns ─────────────────────────────────────────────────────────
+function Campaigns({ metrics, selectedCamp }) {
+  const camps = metrics.campaigns || [];
+
+  // If a specific campaign is selected, show its detail view
+  const campData = selectedCamp ? camps.find((c) => c.id === selectedCamp) : null;
+
+  if (campData) {
+    return <CampaignDetail camp={campData} />;
+  }
+
+  // "All" — show comparison across campaigns
+  const totalEventsData = {
+    labels: camps.map((c) => c.name),
+    datasets: [{
+      data: camps.map((c) => c.totalEvents),
+      backgroundColor: "#c8ff00cc",
+      borderColor: "#c8ff00",
+      borderWidth: 1.5, borderRadius: 4,
+    }],
+  };
+
+  const ctrData = {
+    labels: camps.map((c) => c.name),
+    datasets: [{
+      data: camps.map((c) => c.ctr),
+      backgroundColor: "#00d4ffcc",
+      borderColor: "#00d4ff",
+      borderWidth: 1.5, borderRadius: 4,
+    }],
+  };
+
+  const cvrData = {
+    labels: camps.map((c) => c.name),
+    datasets: [{
+      data: camps.map((c) => c.conversionRate),
+      backgroundColor: "#a78bfacc",
+      borderColor: "#a78bfa",
+      borderWidth: 1.5, borderRadius: 4,
+    }],
+  };
+
+  return (
+    <>
+      {/* Summary cards per campaign */}
+      <div className="camp-cards">
+        {camps.map((c) => (
+          <div key={c.id} className="camp-card">
+            <p className="camp-card-name">{c.name}</p>
+            <div className="camp-card-stats">
+              <div><span className="stat-label">Events</span><span className="stat-val">{c.totalEvents.toLocaleString()}</span></div>
+              <div><span className="stat-label">CTR</span><span className="stat-val accent">{c.ctr}%</span></div>
+              <div><span className="stat-label">Conv. Rate</span><span className="stat-val accent">{c.conversionRate}%</span></div>
+              <div><span className="stat-label">Revenue</span><span className="stat-val">₹{c.revenue.toLocaleString()}</span></div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid2">
+        <ChartCard title="Total events by campaign">
+          <div style={{ height: 220 }}><Bar data={totalEventsData} options={CHART_OPTS} /></div>
+        </ChartCard>
+        <ChartCard title="CTR by campaign (%)">
+          <div style={{ height: 220 }}><Bar data={ctrData} options={CHART_OPTS} /></div>
+        </ChartCard>
+      </div>
+
+      <ChartCard title="Conversion rate by campaign (%)">
+        <div style={{ height: 180 }}><Bar data={cvrData} options={CHART_OPTS} /></div>
+      </ChartCard>
+    </>
+  );
+}
+
+function CampaignDetail({ camp }) {
+  const ts = camp.timeSeriesEvents || [];
+  const lineData = {
+    labels: ts.map((d) => d.t),
+    datasets: [{
+      data: ts.map((d) => d.count),
+      borderColor: "#c8ff00",
+      backgroundColor: "rgba(200,255,0,0.07)",
+      fill: true, tension: 0.4,
+      pointRadius: 3, pointBackgroundColor: "#c8ff00",
+      borderWidth: 1.5,
+    }],
+  };
+
+  return (
+    <>
+      <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
+        <KpiCard label="Total events"  value={camp.totalEvents.toLocaleString()} accent />
+        <KpiCard label="Impressions"   value={camp.impressions.toLocaleString()} />
+        <KpiCard label="Clicks"        value={camp.clicks.toLocaleString()} />
+        <KpiCard label="Conversions"   value={camp.conversions.toLocaleString()} />
+        <KpiCard label="Revenue"       value={`₹${camp.revenue.toLocaleString()}`} />
+        <KpiCard label="CTR"           value={`${camp.ctr}%`} />
+        <KpiCard label="Conv. rate"    value={`${camp.conversionRate}%`} />
+      </div>
+      <ChartCard title="Event volume over time" badge="campaign">
+        <div style={{ height: 220 }}><Line data={lineData} options={CHART_OPTS} /></div>
+      </ChartCard>
+    </>
+  );
+}
+
+// ── Audience ──────────────────────────────────────────────────────────
+function Audience({ dims }) {
+  const segData = {
+    labels: labels(dims.bySegment),
+    datasets: [{
+      data: vals(dims.bySegment),
+      backgroundColor: PALETTE.slice(0, dims.bySegment?.length || 3).map((c) => c + "cc"),
+      borderColor: PALETTE.slice(0, dims.bySegment?.length || 3),
+      borderWidth: 1.5,
+      borderRadius: 4,
+    }],
+  };
+
+  return (
+    <>
+      <div className="grid2">
+        <DonutCard title="Gender"    data={dims.byGender} />
+        <DonutCard title="Age group" data={dims.byAge} />
+      </div>
+      <ChartCard title="Segment breakdown">
+        <div style={{ height: 220 }}>
+          <Bar data={segData} options={CHART_OPTS} />
+        </div>
+      </ChartCard>
+    </>
+  );
+}
+
+// ── Geography ─────────────────────────────────────────────────────────
+function Geography({ dims }) {
+  const cityBar = {
+    labels: labels(dims.byCity),
+    datasets: [{
+      data: vals(dims.byCity),
+      backgroundColor: "#00d4ffcc",
+      borderColor: "#00d4ff",
+      borderWidth: 1.5, borderRadius: 4,
+    }],
+  };
+  const devBar = {
+    labels: labels(dims.byDevice),
+    datasets: [{
+      data: vals(dims.byDevice),
+      backgroundColor: "#a78bfacc",
+      borderColor: "#a78bfa",
+      borderWidth: 1.5, borderRadius: 4,
+    }],
+  };
+
+  return (
+    <>
+      <div className="grid2">
+        <ChartCard title="Top cities">
+          <div style={{ height: 220 }}><Bar data={cityBar} options={CHART_OPTS} /></div>
+        </ChartCard>
+        <DonutCard title="Channel mix" data={dims.byChannel} height={220} />
+      </div>
+      <ChartCard title="Device breakdown">
+        <div style={{ height: 180 }}><Bar data={devBar} options={CHART_OPTS} /></div>
+      </ChartCard>
+    </>
+  );
+}
+
+// ── Reusable components ───────────────────────────────────────────────
+function KpiCard({ label, value, accent }) {
+  return (
+    <div className="kpi-card">
+      <p className="kpi-label">{label}</p>
+      <h2 className={`kpi-value${accent ? " accent" : ""}`}>{value}</h2>
     </div>
   );
 }
 
-function Panel({ title, children, full }) {
+function ChartCard({ title, badge, children }) {
   return (
-    <div className={`db-panel ${full ? "full" : ""}`}>
-      {/* FIX 5: panel title colour raised to #bbb */}
-      <p className="db-panel-title" style={{ color: "#bbb" }}>{title}</p>
+    <div className="chart-card">
+      <div className="chart-header">
+        <span className="chart-title">{title}</span>
+        {badge && <span className="badge">{badge}</span>}
+      </div>
       {children}
     </div>
   );
 }
 
-// FIX 6: Custom legend so text is always readable (Recharts default wraps inside SVG and clips)
-function CustomLegend({ items }) {
+function DonutCard({ title, data = [], height = 240 }) {
+  const donutData = {
+    labels: labels(data),
+    datasets: [{
+      data: vals(data),
+      backgroundColor: PALETTE.slice(0, data.length),
+      borderColor: "#0f1117",
+      borderWidth: 2,
+    }],
+  };
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 16px", marginTop: 10, justifyContent: "center" }}>
-      {items.map((item, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 10, height: 10, borderRadius: 2, background: item.color, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: "#bbb", whiteSpace: "nowrap" }}>{item.name}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Overview ─────────────────────────────────────────────────────────────────
-function Overview({ events }) {
-  const total = events.length;
-  const fraud = events.filter((e) => e.fraud_type).length;
-  const revenue = events.reduce((s, e) => s + (e.conversion_value || 0), 0);
-  const conversions = events.filter((e) => e.event_type === "conversion").length;
-
-  const typeMap = {};
-  events.forEach((e) => { typeMap[e.event_type] = (typeMap[e.event_type] || 0) + 1; });
-  const typeData = Object.entries(typeMap).map(([name, value]) => ({ name, value }));
-
-  const timeMap = {};
-  events.forEach((e) => {
-    if (!e.timestamp) return;
-    const m = e.timestamp.slice(0, 16);
-    timeMap[m] = (timeMap[m] || 0) + 1;
-  });
-  const timeData = Object.entries(timeMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-20)
-    .map(([t, count]) => ({ t: t.slice(11), count }));
-
-  return (
-    <>
-      <div className="db-kpi-row">
-        <KPI label="Total Events"   value={total.toLocaleString()}          accent="#c8ff00" />
-        <KPI label="Total Revenue"  value={`₹${revenue.toLocaleString()}`}  accent="#fff" />
-        <KPI label="Conversions"    value={conversions.toLocaleString()}     accent="#aaa" />
-        <KPI label="Fraud Detected" value={fraud.toLocaleString()}           accent="#ff4444" />
-      </div>
-
-      <div className="db-panels">
-        <Panel title="EVENT VOLUME OVER TIME" full>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={timeData}>
-              <defs>
-                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#c8ff00" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#c8ff00" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="t" {...AXIS_LINE} tick={TICK} />
-              <YAxis {...AXIS_LINE} tick={TICK} />
-              <Tooltip {...TIP} />
-              <Area type="monotone" dataKey="count" stroke="#c8ff00" strokeWidth={1.5} fill="url(#areaGrad)" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </Panel>
-
-        {/* FIX 7: Donut chart — added bottom padding so legend doesn't overlap the ring */}
-        <Panel title="EVENTS BY TYPE">
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-              <Pie
-                data={typeData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="45%"
-                innerRadius={50}
-                outerRadius={80}
-              >
-                {typeData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-              </Pie>
-              <Tooltip {...TIP} />
-            </PieChart>
-          </ResponsiveContainer>
-          <CustomLegend items={typeData.map((t, i) => ({ name: t.name, color: PALETTE[i % PALETTE.length] }))} />
-        </Panel>
-
-        <Panel title="TYPE BREAKDOWN">
-          <div className="db-breakdown">
-            {typeData.map((t, i) => (
-              <div key={t.name} className="db-breakdown-row">
-                <span className="db-breakdown-dot" style={{ background: PALETTE[i % PALETTE.length] }} />
-                {/* FIX 8: breakdown name colour raised */}
-                <span className="db-breakdown-name" style={{ color: "#bbb" }}>{t.name}</span>
-                <div className="db-breakdown-bar-wrap">
-                  <div className="db-breakdown-bar" style={{
-                    width: `${total ? (t.value / total) * 100 : 0}%`,
-                    background: PALETTE[i % PALETTE.length]
-                  }} />
-                </div>
-                <span className="db-breakdown-pct" style={{ color: "#bbb" }}>
-                  {total ? ((t.value / total) * 100).toFixed(1) : 0}%
-                </span>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
-    </>
-  );
-}
-
-// ─── Campaigns ────────────────────────────────────────────────────────────────
-function Campaigns({ events }) {
-  const cMap = {};
-  events.forEach((e) => {
-    const c = e.campaign_id || "unknown";
-    if (!cMap[c]) cMap[c] = { events: 0, revenue: 0 };
-    cMap[c].events++;
-    cMap[c].revenue += e.conversion_value || 0;
-  });
-  const cData = Object.entries(cMap).map(([name, v]) => ({ name, ...v }));
-
-  const chMap = {};
-  events.forEach((e) => { const c = e.channel || "unknown"; chMap[c] = (chMap[c] || 0) + 1; });
-  const chData = Object.entries(chMap).map(([name, value]) => ({ name, value }));
-
-  const adMap = {};
-  events.forEach((e) => { const a = e.ad_id || "unknown"; adMap[a] = (adMap[a] || 0) + 1; });
-  const adData = Object.entries(adMap).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
-
-  // FIX 9: compute max so domain forces all ticks to show on horizontal bar charts
-  const chMax = Math.max(...chData.map((d) => d.value), 1);
-  const adMax = Math.max(...adData.map((d) => d.value), 1);
-
-  return (
-    <div className="db-panels">
-      <Panel title="CAMPAIGN PERFORMANCE" full>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={cData} barGap={4}>
-            <XAxis dataKey="name" {...AXIS_LINE} tick={TICK} />
-            <YAxis {...AXIS_LINE} tick={TICK} />
-            <Tooltip {...TIP} />
-            <Bar dataKey="events"  fill="#c8ff00" radius={[3,3,0,0]} name="Events" />
-            <Bar dataKey="revenue" fill="#444"    radius={[3,3,0,0]} name="Revenue" />
-            <Legend wrapperStyle={{ color: "#bbb", fontSize: 12 }} />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
-
-      {/* FIX 10: BY CHANNEL — explicit domain + tickCount so every value shows */}
-      <Panel title="BY CHANNEL">
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chData} layout="vertical">
-            <XAxis
-              type="number"
-              {...AXIS_LINE}
-              tick={TICK}
-              domain={[0, Math.ceil(chMax * 1.1)]}
-              tickCount={6}
-              allowDecimals={false}
-            />
-            <YAxis
-              dataKey="name"
-              type="category"
-              {...AXIS_LINE}
-              tick={TICK}
-              width={80}
-            />
-            <Tooltip {...TIP} />
-            <Bar dataKey="value" fill="#fff" radius={[0,3,3,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
-
-      {/* FIX 11: TOP ADS — same fix */}
-      <Panel title="TOP ADS">
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={adData} layout="vertical">
-            <XAxis
-              type="number"
-              {...AXIS_LINE}
-              tick={TICK}
-              domain={[0, Math.ceil(adMax * 1.1)]}
-              tickCount={6}
-              allowDecimals={false}
-            />
-            <YAxis
-              dataKey="name"
-              type="category"
-              {...AXIS_LINE}
-              tick={TICK}
-              width={60}
-            />
-            <Tooltip {...TIP} />
-            <Bar dataKey="value" fill="#aaa" radius={[0,3,3,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
-    </div>
-  );
-}
-
-// ─── Audience ─────────────────────────────────────────────────────────────────
-function Audience({ events }) {
-  const ageMap = {}, genMap = {}, segMap = {};
-  events.forEach((e) => {
-    const u = e.user || {};
-    if (u.age_group) ageMap[u.age_group] = (ageMap[u.age_group] || 0) + 1;
-    if (u.gender)    genMap[u.gender]    = (genMap[u.gender]    || 0) + 1;
-    if (u.segment)   segMap[u.segment]   = (segMap[u.segment]   || 0) + 1;
-  });
-
-  const ageData = Object.entries(ageMap).map(([name, value]) => ({ name, value }));
-  const genData = Object.entries(genMap).map(([name, value]) => ({ name, value }));
-  const segData = Object.entries(segMap).map(([name, value]) => ({ name, value }));
-
-  return (
-    <div className="db-panels">
-      <Panel title="AGE GROUP DISTRIBUTION">
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={ageData}>
-            <XAxis dataKey="name" {...AXIS_LINE} tick={TICK} />
-            <YAxis {...AXIS_LINE} tick={TICK} />
-            <Tooltip {...TIP} />
-            <Bar dataKey="value" fill="#c8ff00" radius={[3,3,0,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
-
-      {/* FIX 12: Gender donut — cy shifted up + CustomLegend below so ring is never covered */}
-      <Panel title="GENDER SPLIT">
-        <ResponsiveContainer width="100%" height={200}>
-          <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-            <Pie
-              data={genData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="45%"
-              innerRadius={50}
-              outerRadius={80}
-            >
-              {genData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-            </Pie>
-            <Tooltip {...TIP} />
-          </PieChart>
-        </ResponsiveContainer>
-        <CustomLegend items={genData.map((g, i) => ({ name: g.name, color: PALETTE[i % PALETTE.length] }))} />
-      </Panel>
-
-      <Panel title="USER SEGMENTS" full>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={segData}>
-            <XAxis dataKey="name" {...AXIS_LINE} tick={TICK} />
-            <YAxis {...AXIS_LINE} tick={TICK} />
-            <Tooltip {...TIP} />
-            <Bar dataKey="value" fill="#fff" radius={[3,3,0,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
-    </div>
-  );
-}
-
-// ─── Geography ────────────────────────────────────────────────────────────────
-function Geography({ events }) {
-  const cityMap = {}, devMap = {}, osMap = {};
-  events.forEach((e) => {
-    const city = e.geo?.city || "unknown";
-    cityMap[city] = (cityMap[city] || 0) + 1;
-    const dev = e.device?.device_type || "unknown";
-    devMap[dev] = (devMap[dev] || 0) + 1;
-    const os = e.device?.os || "unknown";
-    osMap[os] = (osMap[os] || 0) + 1;
-  });
-
-  const cityData = Object.entries(cityMap).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
-  const devData  = Object.entries(devMap).map(([name, value]) => ({ name, value }));
-  const osData   = Object.entries(osMap).map(([name, value]) => ({ name, value }));
-  const osMax    = Math.max(...osData.map((d) => d.value), 1);
-
-  return (
-    <div className="db-panels">
-      <Panel title="EVENTS BY CITY" full>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={cityData}>
-            <XAxis dataKey="name" {...AXIS_LINE} tick={TICK} />
-            <YAxis {...AXIS_LINE} tick={TICK} />
-            <Tooltip {...TIP} />
-            <Bar dataKey="value" fill="#c8ff00" radius={[3,3,0,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
-
-      {/* FIX 13: Device donut — same legend fix */}
-      <Panel title="DEVICE TYPE">
-        <ResponsiveContainer width="100%" height={200}>
-          <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-            <Pie
-              data={devData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="45%"
-              innerRadius={50}
-              outerRadius={80}
-            >
-              {devData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-            </Pie>
-            <Tooltip {...TIP} />
-          </PieChart>
-        </ResponsiveContainer>
-        <CustomLegend items={devData.map((d, i) => ({ name: d.name, color: PALETTE[i % PALETTE.length] }))} />
-      </Panel>
-
-      <Panel title="OPERATING SYSTEM">
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={osData} layout="vertical">
-            <XAxis
-              type="number"
-              {...AXIS_LINE}
-              tick={TICK}
-              domain={[0, Math.ceil(osMax * 1.1)]}
-              tickCount={6}
-              allowDecimals={false}
-            />
-            <YAxis dataKey="name" type="category" {...AXIS_LINE} tick={TICK} width={70} />
-            <Tooltip {...TIP} />
-            <Bar dataKey="value" fill="#aaa" radius={[0,3,3,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
-    </div>
-  );
-}
-
-// ─── Fraud ────────────────────────────────────────────────────────────────────
-function Fraud({ events }) {
-  const fraudEvents = events.filter((e) => e.fraud_type);
-  const ftMap = {};
-  fraudEvents.forEach((e) => { ftMap[e.fraud_type] = (ftMap[e.fraud_type] || 0) + 1; });
-  const ftData = Object.entries(ftMap).map(([name, value]) => ({ name, value }));
-
-  const timeMap = {};
-  fraudEvents.forEach((e) => {
-    if (!e.timestamp) return;
-    const m = e.timestamp.slice(0, 16);
-    timeMap[m] = (timeMap[m] || 0) + 1;
-  });
-  const timeData = Object.entries(timeMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-20)
-    .map(([t, count]) => ({ t: t.slice(11), count }));
-
-  const rate = events.length ? ((fraudEvents.length / events.length) * 100).toFixed(2) : 0;
-
-  return (
-    <>
-      <div className="db-kpi-row">
-        <KPI label="Fraud Events" value={fraudEvents.length.toLocaleString()} accent="#ff4444" />
-        <KPI label="Fraud Rate"   value={`${rate}%`}                          accent="#ff4444" />
-        <KPI label="Fraud Types"  value={Object.keys(ftMap).length}           accent="#fff" />
-      </div>
-
-      <div className="db-panels">
-        <Panel title="FRAUD TREND OVER TIME" full>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={timeData}>
-              <defs>
-                <linearGradient id="fraudGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#ff4444" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#ff4444" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="t" {...AXIS_LINE} tick={TICK} />
-              <YAxis {...AXIS_LINE} tick={TICK} />
-              <Tooltip {...TIP} />
-              <Area type="monotone" dataKey="count" stroke="#ff4444" strokeWidth={1.5} fill="url(#fraudGrad)" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </Panel>
-
-        {/*
-          FIX 14: Fraud page layout
-          — Donut + Breakdown are now in a dedicated 2-col sub-grid so they sit
-            side by side and NEVER overlap each other or the trend chart above.
-          — Donut uses cy="45%" + CustomLegend below (not inside SVG canvas).
-        */}
-        <div
-          className="full"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 16,
-            width: "100%",
-          }}
-        >
-          <Panel title="FRAUD BY TYPE">
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                <Pie
-                  data={ftData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="45%"
-                  innerRadius={50}
-                  outerRadius={80}
-                >
-                  {ftData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-                </Pie>
-                <Tooltip {...TIP} />
-              </PieChart>
-            </ResponsiveContainer>
-            <CustomLegend items={ftData.map((t, i) => ({ name: t.name, color: PALETTE[i % PALETTE.length] }))} />
-          </Panel>
-
-          <Panel title="TYPE BREAKDOWN">
-            <div className="db-breakdown">
-              {ftData.map((t, i) => (
-                <div key={t.name} className="db-breakdown-row">
-                  <span className="db-breakdown-dot" style={{ background: PALETTE[i % PALETTE.length] }} />
-                  <span className="db-breakdown-name" style={{ fontSize: 11, color: "#bbb" }}>{t.name}</span>
-                  <div className="db-breakdown-bar-wrap">
-                    <div className="db-breakdown-bar" style={{
-                      width: `${fraudEvents.length ? (t.value / fraudEvents.length) * 100 : 0}%`,
-                      background: PALETTE[i % PALETTE.length]
-                    }} />
-                  </div>
-                  <span className="db-breakdown-pct" style={{ color: "#bbb" }}>
-                    {fraudEvents.length ? ((t.value / fraudEvents.length) * 100).toFixed(1) : 0}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </div>
-      </div>
-    </>
+    <ChartCard title={title}>
+      <div style={{ height }}><Doughnut data={donutData} options={PIE_OPTS} /></div>
+    </ChartCard>
   );
 }
