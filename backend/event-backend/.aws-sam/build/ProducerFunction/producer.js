@@ -6,7 +6,7 @@ const MAX_RECORDS_PER_BATCH = 500;
 
 exports.handler = async (event) => {
   try {
-    // 🔥 1. Handle CORS preflight
+    //  1. Handle CORS preflight
     if (
       event.httpMethod === "OPTIONS" ||
       event.requestContext?.http?.method === "OPTIONS"
@@ -14,9 +14,9 @@ exports.handler = async (event) => {
       return response(200, {});
     }
 
-    console.log("🔥 Incoming request");
+    console.log(" Incoming request");
 
-    // 🔥 2. Parse body safely
+    //  2. Parse body safely
     let body;
     try {
       body =
@@ -24,20 +24,20 @@ exports.handler = async (event) => {
           ? JSON.parse(event.body)
           : event.body;
     } catch (err) {
-      console.error("❌ JSON parse error:", err);
+      console.error(" JSON parse error:", err);
       return response(400, { message: "Invalid JSON format" });
     }
 
-    // 🔥 3. Normalize to array
+    //  3. Normalize to array
     const events = Array.isArray(body) ? body : [body];
 
-    console.log(`📦 Received events: ${events.length}`);
+    console.log(` Received events: ${events.length}`);
 
     if (!events.length) {
       return response(400, { message: "No events provided" });
     }
 
-    // 🔥 4. Validate + enrich
+    //  4. Validate + enrich
     const validEvents = [];
     for (const e of events) {
       if (!e || !e.event_id) continue;
@@ -49,7 +49,7 @@ exports.handler = async (event) => {
       });
     }
 
-    console.log(`✅ Valid events: ${validEvents.length}`);
+    console.log(` Valid events: ${validEvents.length}`);
 
     if (!validEvents.length) {
       return response(400, {
@@ -57,18 +57,18 @@ exports.handler = async (event) => {
       });
     }
 
-    // 🔥 5. Chunk for Kinesis
+    //  5. Chunk for Kinesis
     const chunks = chunkArray(validEvents, MAX_RECORDS_PER_BATCH);
 
     let totalFailed = 0;
     let totalSent = 0;
 
-    // 🚀 6. Send to Kinesis
+    //  6. Send to Kinesis
     for (const chunk of chunks) {
       let records = chunk.map((e) => ({
         Data: JSON.stringify(e),
 
-        // ✅ FIXED: Avoid hot shards
+        // FIXED: Avoid hot shards
         PartitionKey:
           e.event_id ||
           `${Date.now()}_${Math.random()}`,
@@ -78,7 +78,7 @@ exports.handler = async (event) => {
 
       while (records.length > 0 && attempt < 2) {
         console.log(
-          `🚀 Sending batch of ${records.length} records (attempt ${
+          ` Sending batch of ${records.length} records (attempt ${
             attempt + 1
           })`
         );
@@ -90,9 +90,9 @@ exports.handler = async (event) => {
           })
           .promise();
 
-        // ✅ SUCCESS
+        // SUCCESS
         if (res.FailedRecordCount === 0) {
-          console.log("✅ Batch success");
+          console.log("Batch success");
 
           totalSent += records.length;
 
@@ -101,9 +101,9 @@ exports.handler = async (event) => {
           break;
         }
 
-        // ⚠️ PARTIAL FAILURE
+        // PARTIAL FAILURE
         console.warn(
-          `⚠️ Failed records: ${res.FailedRecordCount}`
+          `Failed records: ${res.FailedRecordCount}`
         );
 
         // count successful ones
@@ -117,17 +117,17 @@ exports.handler = async (event) => {
         attempt++;
       }
 
-      // ❌ FINAL FAILURE
+      //  FINAL FAILURE
       if (records.length > 0) {
         totalFailed += records.length;
         console.error(
-          `❌ Permanent failures after retry: ${records.length}`
+          ` Permanent failures after retry: ${records.length}`
         );
       }
     }
 
     console.log(
-      `🎯 Final Summary → Sent: ${totalSent}, Failed: ${totalFailed}`
+      ` Final Summary → Sent: ${totalSent}, Failed: ${totalFailed}`
     );
 
     return response(200, {
@@ -138,7 +138,7 @@ exports.handler = async (event) => {
     });
 
   } catch (err) {
-    console.error("🔥 Lambda crash:", err);
+    console.error(" Lambda crash:", err);
 
     return response(500, {
       message: "Internal Server Error",

@@ -1,11 +1,11 @@
 ﻿import { useState, useRef, useEffect } from "react";
 import "./App.css";
 
-// 🔥 API
-const API_URL = "https://sd6axm6sic.execute-api.us-east-1.amazonaws.com/Prod/events";
+// API
+const API_URL = "https://rexttiyzd1.execute-api.us-east-1.amazonaws.com/Prod/events";
 
 // CONFIG
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 100;
 const MAX_PARALLEL_REQUESTS = 10;
 
 function App() {
@@ -35,7 +35,7 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // 🔥 FINAL FIXED SENDER
+  //  FINAL FIXED SENDER
   const flushQueue = async () => {
     if (sendQueue.current.length === 0) return;
 
@@ -49,13 +49,13 @@ function App() {
             if (!batch) break;
 
             try {
-              // ✅ ENSURE campaign_id ALWAYS exists
+              //  ENSURE campaign_id ALWAYS exists
               const safeBatch = (Array.isArray(batch) ? batch : [batch]).map(e => ({
                 ...e,
                 campaign_id: e.campaign_id || "default-key"
               }));
 
-              console.log("Sending batch:", safeBatch); // 🔥 debug
+              console.log("Sending batch:", safeBatch); //  debug
 
               await fetch(API_URL, {
                 method: "POST",

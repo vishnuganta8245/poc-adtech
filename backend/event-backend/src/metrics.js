@@ -1,7 +1,7 @@
 const AWS = require("aws-sdk");
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
-const TABLE_NAME = process.env.TABLE_NAME;
+const METRICS_TABLE = process.env.TABLE_NAME;
 const DIM_TABLE = process.env.DIM_TABLE;
 
 const CORS_HEADERS = {
@@ -10,17 +10,69 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-async function scanAll(table) {
+// Get all campaign IDs (safe scan)
+async function getCampaignIds() {
   let items = [];
   let lastKey;
+
   do {
-    const params = { TableName: table };
-    if (lastKey) params.ExclusiveStartKey = lastKey;
-    const res = await dynamodb.scan(params).promise();
+    const res = await dynamodb.scan({
+      TableName: METRICS_TABLE,
+      FilterExpression: "sk = :t",
+      ExpressionAttributeValues: { ":t": "TOTAL" },
+      ProjectionExpression: "pk",
+      ExclusiveStartKey: lastKey,
+    }).promise();
+
     items = items.concat(res.Items || []);
     lastKey = res.LastEvaluatedKey;
+
   } while (lastKey);
-  return items;
+
+  return [...new Set(items.map(i => i.pk))];
+}
+
+// Get TOTAL row
+async function getTotalRow(campaignId) {
+  const res = await dynamodb.query({
+    TableName: METRICS_TABLE,
+    KeyConditionExpression: "pk = :pk AND sk = :sk",
+    ExpressionAttributeValues: {
+      ":pk": campaignId,
+      ":sk": "TOTAL",
+    },
+  }).promise();
+
+  return res.Items?.[0];
+}
+
+// Get last 20 time buckets
+async function getTimeSeries(campaignId, limit = 20) {
+  const res = await dynamodb.query({
+    TableName: METRICS_TABLE,
+    KeyConditionExpression: "pk = :pk AND sk < :total",
+    ExpressionAttributeValues: {
+      ":pk": campaignId,
+      ":total": "TOTAL",
+    },
+    ScanIndexForward: false,
+    Limit: limit,
+  }).promise();
+
+  return res.Items || [];
+}
+
+// Get dimensions for campaign
+async function getDims(campaignId) {
+  const res = await dynamodb.query({
+    TableName: DIM_TABLE,
+    KeyConditionExpression: "pk = :pk",
+    ExpressionAttributeValues: {
+      ":pk": campaignId,
+    },
+  }).promise();
+
+  return res.Items || [];
 }
 
 exports.lambdaHandler = async (event) => {
@@ -29,144 +81,117 @@ exports.lambdaHandler = async (event) => {
   }
 
   try {
-    const metricsData = await scanAll(TABLE_NAME);
-    const dimData = await scanAll(DIM_TABLE);
+    const campaignIds = await getCampaignIds();
 
-    // ── Get all unique campaign IDs from metrics table ──
-    const campaignIds = [...new Set(metricsData.map((i) => i.pk).filter(Boolean))];
-
-    // ── Per-campaign metrics aggregation ──
-    const perCampaign = {};
-
-    for (const campId of campaignIds) {
-      perCampaign[campId] = {
-        impressions: 0,
-        clicks: 0,
-        conversions: 0,
-        revenue: 0,
-        timeSeries: {},
-      };
-    }
-
-    // Overall totals
     let totalImpressions = 0;
     let totalClicks = 0;
     let totalConversions = 0;
     let totalRevenue = 0;
+
     const overallTimeSeries = {};
-
-    for (const item of metricsData) {
-      const campId = item.pk;
-
-      totalImpressions += item.impressions || 0;
-      totalClicks += item.clicks || 0;
-      totalConversions += item.conversions || 0;
-      totalRevenue += item.revenue || 0;
-
-      if (item.sk) {
-        overallTimeSeries[item.sk] =
-          (overallTimeSeries[item.sk] || 0) +
-          (item.impressions || 0) + (item.clicks || 0) + (item.conversions || 0);
-      }
-
-      if (campId && perCampaign[campId]) {
-        perCampaign[campId].impressions += item.impressions || 0;
-        perCampaign[campId].clicks += item.clicks || 0;
-        perCampaign[campId].conversions += item.conversions || 0;
-        perCampaign[campId].revenue += item.revenue || 0;
-
-        if (item.sk) {
-          perCampaign[campId].timeSeries[item.sk] =
-            (perCampaign[campId].timeSeries[item.sk] || 0) +
-            (item.impressions || 0) + (item.clicks || 0) + (item.conversions || 0);
-        }
-      }
-    }
-
-    // ── Per-campaign dimension aggregation ──
-    // dim pk format: CAMPAIGN_ID#type#value
-    const perCampaignDims = {};
-    for (const campId of campaignIds) {
-      perCampaignDims[campId] = {
-        geo: {}, device: {}, channel: {}, gender: {}, age: {}, segment: {},
-      };
-    }
-
-    // Overall dims
     const overallDims = {
       geo: {}, device: {}, channel: {}, gender: {}, age: {}, segment: {},
     };
 
-    for (const item of dimData) {
-      const parts = item.pk.split("#");
-      if (parts.length < 3) continue;
+    const campaignSummaries = [];
 
-      const campId = parts[0];
-      const type = parts[1];
-      const value = parts[2];
-      const count = item.count || 0;
+    const campResults = await Promise.all(
+      campaignIds.map((campId) =>
+        Promise.all([
+          getTotalRow(campId),
+          getTimeSeries(campId),
+          getDims(campId),
+        ]).then(([totalRow, timeRows, dimRows]) => ({ campId, totalRow, timeRows, dimRows }))
+      )
+    );
 
-      // Add to overall
-      if (overallDims[type]) {
-        overallDims[type][value] = (overallDims[type][value] || 0) + count;
+    for (const { campId, totalRow, timeRows, dimRows } of campResults) {
+
+      const impressions = totalRow?.impressions || 0;
+      const clicks = totalRow?.clicks || 0;
+      const conversions = totalRow?.conversions || 0;
+      const revenue = totalRow?.revenue || 0;
+
+      totalImpressions += impressions;
+      totalClicks += clicks;
+      totalConversions += conversions;
+      totalRevenue += revenue;
+
+      // Time series
+      const tsMap = {};
+      for (const item of timeRows) {
+        const t = item.sk;
+        const val =
+          (item.impressions || 0) +
+          (item.clicks || 0) +
+          (item.conversions || 0);
+
+        tsMap[t] = (tsMap[t] || 0) + val;
+        overallTimeSeries[t] = (overallTimeSeries[t] || 0) + val;
       }
 
-      // Add to per-campaign
-      if (perCampaignDims[campId] && perCampaignDims[campId][type]) {
-        perCampaignDims[campId][type][value] =
-          (perCampaignDims[campId][type][value] || 0) + count;
+      // Dimensions
+      const dims = {
+        geo: {}, device: {}, channel: {}, gender: {}, age: {}, segment: {},
+      };
+
+      for (const item of dimRows) {
+        const [type, value] = item.sk.split("#");
+        const count = item.count || 0;
+
+        if (dims[type]) {
+          dims[type][value] = (dims[type][value] || 0) + count;
+        }
+
+        if (overallDims[type]) {
+          overallDims[type][value] = (overallDims[type][value] || 0) + count;
+        }
       }
-    }
 
-    // ── Build per-campaign summary array (for campaign tab charts) ──
-    const campaignSummaries = campaignIds.map((campId) => {
-      const c = perCampaign[campId];
-      const totalEvents = c.impressions + c.clicks + c.conversions;
-      const ctr = c.impressions ? ((c.clicks / c.impressions) * 100).toFixed(2) : "0";
-      const convRate = c.clicks ? ((c.conversions / c.clicks) * 100).toFixed(2) : "0";
+      // Build campaign summary
+      const totalEvents = impressions + clicks + conversions;
+      const ctr = impressions ? (clicks / impressions) * 100 : 0;
+      const conversionRate = clicks ? (conversions / clicks) * 100 : 0;
 
-      return {
+      campaignSummaries.push({
         id: campId,
         name: campId,
         totalEvents,
-        impressions: c.impressions,
-        clicks: c.clicks,
-        conversions: c.conversions,
-        revenue: c.revenue,
-        ctr: parseFloat(ctr),
-        conversionRate: parseFloat(convRate),
-        timeSeriesEvents: formatTimeSeries(c.timeSeries),
+        impressions,
+        clicks,
+        conversions,
+        revenue,
+        ctr: parseFloat(ctr.toFixed(2)),
+        conversionRate: parseFloat(conversionRate.toFixed(2)),
+        timeSeriesEvents: formatTimeSeries(tsMap),
         dims: {
-          byGender: toChartData(perCampaignDims[campId]?.gender || {}),
-          byAge: toChartData(perCampaignDims[campId]?.age || {}),
-          bySegment: toChartData(perCampaignDims[campId]?.segment || {}),
-          byCity: toChartData(perCampaignDims[campId]?.geo || {}),
-          byDevice: toChartData(perCampaignDims[campId]?.device || {}),
-          byChannel: toChartData(perCampaignDims[campId]?.channel || {}),
+          byGender: toChartData(dims.gender),
+          byAge: toChartData(dims.age),
+          bySegment: toChartData(dims.segment),
+          byCity: toChartData(dims.geo),
+          byDevice: toChartData(dims.device),
+          byChannel: toChartData(dims.channel),
         },
-      };
-    });
+      });
+    }
 
-    // ── Overall totals ──
     const totalEvents = totalImpressions + totalClicks + totalConversions;
-    const ctr = totalImpressions ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0";
-    const conversionRate = totalClicks ? ((totalConversions / totalClicks) * 100).toFixed(2) : "0";
+    const ctr = totalImpressions ? (totalClicks / totalImpressions) * 100 : 0;
+    const conversionRate = totalClicks ? (totalConversions / totalClicks) * 100 : 0;
 
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
       body: JSON.stringify({
-        // Overview KPIs
         totalEvents,
         totalImpressions,
         totalClicks,
         totalConversions,
         totalRevenue,
-        ctr,
-        conversionRate,
+        ctr: ctr.toFixed(2),
+        conversionRate: conversionRate.toFixed(2),
         timeSeriesEvents: formatTimeSeries(overallTimeSeries),
 
-        // Overall dims (for audience/geography "all campaigns" view)
         byGender: toChartData(overallDims.gender),
         byAge: toChartData(overallDims.age),
         bySegment: toChartData(overallDims.segment),
@@ -174,11 +199,11 @@ exports.lambdaHandler = async (event) => {
         byDevice: toChartData(overallDims.device),
         byChannel: toChartData(overallDims.channel),
 
-        // Per-campaign (campaigns tab + filtered audience/geo)
         campaigns: campaignSummaries,
         campaignIds,
       }),
     };
+
   } catch (err) {
     console.error("ERROR:", err);
     return {
@@ -189,6 +214,7 @@ exports.lambdaHandler = async (event) => {
   }
 };
 
+// Helpers
 function toChartData(obj = {}) {
   return Object.entries(obj).map(([name, value]) => ({ name, value }));
 }
@@ -197,5 +223,8 @@ function formatTimeSeries(map) {
   return Object.entries(map)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-20)
-    .map(([t, count]) => ({ t: t.slice(11), count }));
+    .map(([t, count]) => ({
+      t: t.slice(11),
+      count
+    }));
 }

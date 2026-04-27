@@ -15,6 +15,7 @@ ChartJS.register(
 );
 
 const METRICS_URL = import.meta.env.VITE_METRICS_URL;
+const WS_URL = import.meta.env.VITE_WS_URL;
 
 const PALETTE = [
   "#c8ff00", "#00d4ff", "#ff6b6b", "#ffd166",
@@ -161,6 +162,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!METRICS_URL) return;
+
     const load = async () => {
       try {
         const res = await fetch(METRICS_URL);
@@ -168,17 +170,40 @@ export default function Dashboard() {
         setMetrics(data);
         setLastUpdated(new Date());
         setLive(true);
-        // Auto-select first campaign if none selected
-        if (!selectedCamp && data.campaignIds?.length) {
-          setSelectedCamp(null);
-        }
       } catch {
         setLive(false);
       }
     };
+
     load();
-    const iv = setInterval(load, 5000);
-    return () => clearInterval(iv);
+
+    if (!WS_URL) {
+      const iv = setInterval(load, 5000);
+      return () => clearInterval(iv);
+    }
+
+    let fallbackInterval = null;
+    const ws = new WebSocket(WS_URL);
+
+    let debounceTimer = null;
+    ws.onmessage = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(load, 100);
+    };
+
+    ws.onopen = () => setLive(true);
+
+    ws.onclose = () => {
+      setLive(false);
+      fallbackInterval = setInterval(load, 5000);
+    };
+
+    ws.onerror = () => ws.close();
+
+    return () => {
+      ws.close();
+      if (fallbackInterval) clearInterval(fallbackInterval);
+    };
   }, []);
 
   // Resolve which campaign data to show for audience/geo tabs
