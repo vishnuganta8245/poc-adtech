@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { signOut } from "./auth/cognito";
 import "./App.css";
 import {
   Chart as ChartJS,
@@ -153,7 +154,7 @@ function labels(arr = []) { return arr.map((d) => d.name); }
 function vals(arr = [])   { return arr.map((d) => d.value); }
 
 // ── Root ──────────────────────────────────────────────────────────────
-export default function Dashboard() {
+export default function Dashboard({ onSignOut }) {
   const [metrics, setMetrics] = useState(MOCK);
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedCamp, setSelectedCamp] = useState(null); // null = "All"
@@ -243,6 +244,24 @@ export default function Dashboard() {
         <div className="sidebar-footer">
           <div className={`status-dot${live ? " live" : ""}`} />
           <span className="status-label">{live ? "Live" : "Preview"}</span>
+          <button
+            onClick={() => { signOut(); onSignOut?.(); }}
+            style={{
+              marginLeft: "auto",
+              background: "none",
+              border: "1px solid #2a2d3a",
+              borderRadius: "6px",
+              color: "#8b8fa8",
+              fontSize: "11px",
+              padding: "4px 10px",
+              cursor: "pointer",
+              letterSpacing: "0.3px",
+            }}
+            onMouseEnter={(e) => { e.target.style.borderColor = "#ff6b6b"; e.target.style.color = "#ff6b6b"; }}
+            onMouseLeave={(e) => { e.target.style.borderColor = "#2a2d3a"; e.target.style.color = "#8b8fa8"; }}
+          >
+            Sign out
+          </button>
         </div>
       </aside>
 

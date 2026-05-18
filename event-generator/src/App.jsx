@@ -2,7 +2,7 @@
 import "./App.css";
 
 // API
-const API_URL = "https://rexttiyzd1.execute-api.us-east-1.amazonaws.com/Prod/events";
+const API_URL = import.meta.env.VITE_API_URL;
 
 // CONFIG
 const BATCH_SIZE = 100;
