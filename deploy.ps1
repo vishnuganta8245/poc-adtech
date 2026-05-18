@@ -33,40 +33,17 @@ $DASH_BUCKET = Get-Output "EventDashboardBucketName"
 $GEN_BUCKET  = Get-Output "EventGeneratorBucketName"
 $DASH_URL    = Get-Output "EventDashboardURL"
 $GEN_URL     = Get-Output "EventGeneratorURL"
+$POOL_ID     = Get-Output "UserPoolId"
+$CLIENT_ID   = Get-Output "UserPoolClientId"
 
 Write-Host "  Events API  : $EVENTS_API"
 Write-Host "  Metrics API : $METRICS_API"
 Write-Host "  WebSocket   : $WS_URL"
-Write-Host "  Dash Bucket : $DASH_BUCKET"
-Write-Host "  Gen Bucket  : $GEN_BUCKET"
-
-# ── Step 3: Create Cognito User Pool ───────────────────────────────────
-Write-Host "`n=== Step 3: Create Cognito User Pool ===" -ForegroundColor Cyan
-$pool = aws cognito-idp create-user-pool `
-  --pool-name "EventLens" `
-  --policies "PasswordPolicy={MinimumLength=8,RequireUppercase=true,RequireLowercase=true,RequireNumbers=true,RequireSymbols=false}" `
-  --auto-verified-attributes email `
-  --region $REGION `
-  --output json | ConvertFrom-Json
-
-$POOL_ID = $pool.UserPool.Id
-Write-Host "  User Pool ID: $POOL_ID"
-
-# ── Step 4: Create App Client ──────────────────────────────────────────
-Write-Host "`n=== Step 4: Create App Client ===" -ForegroundColor Cyan
-$client = aws cognito-idp create-user-pool-client `
-  --user-pool-id $POOL_ID `
-  --client-name "EventLens-App" `
-  --no-generate-secret `
-  --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH `
-  --region $REGION `
-  --output json | ConvertFrom-Json
-
-$CLIENT_ID = $client.UserPoolClient.ClientId
+Write-Host "  Pool ID     : $POOL_ID"
 Write-Host "  Client ID   : $CLIENT_ID"
 
-# ── Step 5: Create User ────────────────────────────────────────────────
-Write-Host "`n=== Step 5: Create User ===" -ForegroundColor Cyan
+# ── Step 3: Create User ────────────────────────────────────────────────
+Write-Host "`n=== Step 3: Create User ===" -ForegroundColor Cyan
 aws cognito-idp admin-create-user `
   --user-pool-id $POOL_ID `
   --username $USERNAME `
@@ -84,8 +61,8 @@ aws cognito-idp admin-set-user-password `
 
 Write-Host "  User ready  : $USERNAME / $PASSWORD"
 
-# ── Step 6: Update .env files ──────────────────────────────────────────
-Write-Host "`n=== Step 6: Updating .env files ===" -ForegroundColor Cyan
+# ── Step 4: Update .env files ──────────────────────────────────────────
+Write-Host "`n=== Step 4: Updating .env files ===" -ForegroundColor Cyan
 
 Set-Content -Path "$PSScriptRoot\event-dashboard\.env" -Encoding utf8 -Value @"
 VITE_METRICS_URL=$METRICS_API
@@ -100,22 +77,22 @@ VITE_API_URL=$EVENTS_API
 "@
 Write-Host "  event-generator/.env updated"
 
-# ── Step 7: Build & Deploy Dashboard ──────────────────────────────────
-Write-Host "`n=== Step 7: Build & Deploy Dashboard ===" -ForegroundColor Cyan
+# ── Step 5: Build & Deploy Dashboard ──────────────────────────────────
+Write-Host "`n=== Step 5: Build & Deploy Dashboard ===" -ForegroundColor Cyan
 Set-Location "$PSScriptRoot\event-dashboard"
 npm run build
 aws s3 sync dist/ "s3://$DASH_BUCKET" --delete
 Write-Host "  Dashboard deployed"
 
-# ── Step 8: Build & Deploy Generator ──────────────────────────────────
-Write-Host "`n=== Step 8: Build & Deploy Event Generator ===" -ForegroundColor Cyan
+# ── Step 6: Build & Deploy Generator ──────────────────────────────────
+Write-Host "`n=== Step 6: Build & Deploy Event Generator ===" -ForegroundColor Cyan
 Set-Location "$PSScriptRoot\event-generator"
 npm run build
 aws s3 sync dist/ "s3://$GEN_BUCKET" --delete
 Write-Host "  Generator deployed"
 
-# ── Step 9: Invalidate CloudFront Caches ──────────────────────────────
-Write-Host "`n=== Step 9: Invalidating CloudFront Caches ===" -ForegroundColor Cyan
+# ── Step 7: Invalidate CloudFront Caches ──────────────────────────────
+Write-Host "`n=== Step 7: Invalidating CloudFront Caches ===" -ForegroundColor Cyan
 $dists = aws cloudfront list-distributions `
   --query "DistributionList.Items[*].{Id:Id,Domain:DomainName}" `
   --output json | ConvertFrom-Json

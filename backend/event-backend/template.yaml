@@ -375,6 +375,35 @@ Resources:
             ResponsePagePath: /index.html
 
 # ─────────────────────────────────────────────
+#  Cognito User Pool + App Client
+# ─────────────────────────────────────────────
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: EventLens
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AutoVerifiedAttributes:
+        - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: EventLens-App
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+# ─────────────────────────────────────────────
 #  OUTPUTS
 # ─────────────────────────────────────────────
 Outputs:
@@ -405,3 +434,11 @@ Outputs:
   WebSocketURL:
     Description: "WebSocket URL for dashboard"
     Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+  UserPoolId:
+    Description: "Cognito User Pool ID"
+    Value: !Ref CognitoUserPool
+
+  UserPoolClientId:
+    Description: "Cognito App Client ID"
+    Value: !Ref CognitoUserPoolClient
