@@ -1,4 +1,4 @@
-# Ad-Tech Event Streaming Pipeline (POC)
+# Ad-Tech Event Streaming Pipeline 
 
 A fully serverless AWS proof of concept that generates synthetic ad events, streams them through Kinesis, aggregates metrics in real-time via Lambda, and visualizes live impressions, clicks, and conversions on a web dashboard connected via WebSocket.
 
