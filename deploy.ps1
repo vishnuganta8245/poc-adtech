@@ -64,17 +64,18 @@ Write-Host "  User ready  : $USERNAME / $PASSWORD"
 # ── Step 4: Update .env files ──────────────────────────────────────────
 Write-Host "`n=== Step 4: Updating .env files ===" -ForegroundColor Cyan
 
-Set-Content -Path "$PSScriptRoot\event-dashboard\.env" -Encoding utf8 -Value @"
-VITE_METRICS_URL=$METRICS_API
-VITE_WS_URL=$WS_URL
-VITE_COGNITO_USER_POOL_ID=$POOL_ID
-VITE_COGNITO_CLIENT_ID=$CLIENT_ID
-"@
+[System.IO.File]::WriteAllText(
+  "$PSScriptRoot\event-dashboard\.env",
+  "VITE_METRICS_URL=$METRICS_API`nVITE_WS_URL=$WS_URL`nVITE_COGNITO_USER_POOL_ID=$POOL_ID`nVITE_COGNITO_CLIENT_ID=$CLIENT_ID`n",
+  [System.Text.UTF8Encoding]::new($false)
+)
 Write-Host "  event-dashboard/.env updated"
 
-Set-Content -Path "$PSScriptRoot\event-generator\.env" -Encoding utf8 -Value @"
-VITE_API_URL=$EVENTS_API
-"@
+[System.IO.File]::WriteAllText(
+  "$PSScriptRoot\event-generator\.env",
+  "VITE_API_URL=$EVENTS_API`n",
+  [System.Text.UTF8Encoding]::new($false)
+)
 Write-Host "  event-generator/.env updated"
 
 # ── Step 5: Build & Deploy Dashboard ──────────────────────────────────
