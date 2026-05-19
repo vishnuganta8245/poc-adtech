@@ -50,14 +50,14 @@ aws cognito-idp admin-create-user `
   --user-attributes Name=email,Value=$USERNAME Name=email_verified,Value=true `
   --temporary-password "Temp@1234" `
   --message-action SUPPRESS `
-  --region $REGION | Out-Null
+  --region $REGION 2>&1 | Out-Null
 
 aws cognito-idp admin-set-user-password `
   --user-pool-id $POOL_ID `
   --username $USERNAME `
   --password $PASSWORD `
   --permanent `
-  --region $REGION | Out-Null
+  --region $REGION 2>&1 | Out-Null
 
 Write-Host "  User ready  : $USERNAME / $PASSWORD"
 
@@ -80,6 +80,7 @@ Write-Host "  event-generator/.env updated"
 # ── Step 5: Build & Deploy Dashboard ──────────────────────────────────
 Write-Host "`n=== Step 5: Build & Deploy Dashboard ===" -ForegroundColor Cyan
 Set-Location "$PSScriptRoot\event-dashboard"
+npm install
 npm run build
 aws s3 sync dist/ "s3://$DASH_BUCKET" --delete
 Write-Host "  Dashboard deployed"
@@ -87,6 +88,7 @@ Write-Host "  Dashboard deployed"
 # ── Step 6: Build & Deploy Generator ──────────────────────────────────
 Write-Host "`n=== Step 6: Build & Deploy Event Generator ===" -ForegroundColor Cyan
 Set-Location "$PSScriptRoot\event-generator"
+npm install
 npm run build
 aws s3 sync dist/ "s3://$GEN_BUCKET" --delete
 Write-Host "  Generator deployed"
